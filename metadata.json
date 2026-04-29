@@ -1,0 +1,5 @@
+{
+  "name": "Le cuisinier",
+  "description": "An intelligent culinary assistant that plans meals, aggregates shopping lists, and orchestrates cooking timelines for multiple dishes simultaneously using Gemini AI.",
+  "requestFramePermissions": []
+}
