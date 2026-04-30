@@ -97,6 +97,11 @@ const App = () => {
   };
 
   const handleGenerate = async () => {
+    if (aiProvider === 'openrouter' && !openRouterApiKey.trim()) {
+      alert(language === 'zh-TW' ? "請在右上角設定中配置 OpenRouter API Key。" : "Please configure your OpenRouter API Key in the top-right settings.");
+      setIsSettingsOpen(true);
+      return;
+    }
     const validDishes = dishesInput.filter(d => d.name.trim() !== '');
     if (creatorMode === 'normal' && validDishes.length === 0) return;
     if (creatorMode === 'clearFridge' && validDishes.length === 0 && fridgeIngredients.trim() === '') return;
@@ -188,6 +193,11 @@ const App = () => {
   };
 
   const handleRegenerate = async () => {
+    if (aiProvider === 'openrouter' && !openRouterApiKey.trim()) {
+      alert(language === 'zh-TW' ? "請在右上角設定中配置 OpenRouter API Key。" : "Please configure your OpenRouter API Key in the top-right settings.");
+      setIsSettingsOpen(true);
+      return;
+    }
     if (!currentPlan || !regenInstruction.trim()) return;
     setLoading(true);
     setIsRegenModalOpen(false);
