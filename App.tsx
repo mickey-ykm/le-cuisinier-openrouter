@@ -39,6 +39,7 @@ const App = () => {
   // Form State
   const [creatorMode, setCreatorMode] = useState<'normal' | 'clearFridge'>('normal');
   const [fridgeIngredients, setFridgeIngredients] = useState('');
+  const [expectedTime, setExpectedTime] = useState('');
   const [planTitleInput, setPlanTitleInput] = useState('');
   const [dishesInput, setDishesInput] = useState([{ id: Date.now().toString(), name: '', requirements: '', youtubeUrl: '' }]);
   const [remarks, setRemarks] = useState('');
@@ -119,7 +120,7 @@ const App = () => {
         ? `🔍 正在搜尋關於 "${dishNamesStr}" 的食譜...` 
         : `🔍 Researching recipes for "${dishNamesStr}"...`);
         
-      const recipes = await fetchRecipes(validDishes, remarks, headcount, dietary, sideDishCount, language, config, creatorMode === 'clearFridge' ? fridgeIngredients : undefined);
+      const recipes = await fetchRecipes(validDishes, remarks, headcount, dietary, sideDishCount, language, config, creatorMode === 'clearFridge' ? fridgeIngredients : undefined, creatorMode === 'clearFridge' ? expectedTime : undefined);
       
       if (recipes.length === 0) {
         throw new Error("No recipes found");
@@ -164,6 +165,7 @@ const App = () => {
       setDishesInput([{ id: Date.now().toString(), name: '', requirements: '', youtubeUrl: '' }]);
       setRemarks('');
       setFridgeIngredients('');
+      setExpectedTime('');
     } catch (err: any) {
       console.error(err);
       if (err?.message === 'RATE_LIMIT') {
@@ -479,18 +481,35 @@ const App = () => {
 
           {/* Clear Fridge Ingredients Input */}
           {creatorMode === 'clearFridge' && (
-            <div>
-              <label className="block text-sm font-bold text-brand-text/80 mb-3 uppercase tracking-wide">
-                 {t.fridgeIngredients}
-              </label>
-              <textarea 
-                value={fridgeIngredients}
-                onChange={(e) => setFridgeIngredients(e.target.value)}
-                placeholder={t.fridgeIngredientsPlaceholder}
-                className="w-full p-4 bg-brand-bg border-none rounded-2xl focus:ring-4 focus:ring-brand-primary/20 outline-none transition-all text-lg font-medium placeholder-brand-muted/50 text-brand-text shadow-inner min-h-[100px] resize-y"
-                disabled={loading}
-              />
-            </div>
+            <>
+              <div>
+                <label className="block text-sm font-bold text-brand-text/80 mb-3 uppercase tracking-wide">
+                   {t.fridgeIngredients}
+                </label>
+                <textarea 
+                  value={fridgeIngredients}
+                  onChange={(e) => setFridgeIngredients(e.target.value)}
+                  placeholder={t.fridgeIngredientsPlaceholder}
+                  className="w-full p-4 bg-brand-bg border-none rounded-2xl focus:ring-4 focus:ring-brand-primary/20 outline-none transition-all text-lg font-medium placeholder-brand-muted/50 text-brand-text shadow-inner min-h-[100px] resize-y"
+                  disabled={loading}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-brand-text/80 mb-3 uppercase tracking-wide">
+                  {t.expectedTime}
+                </label>
+                <input 
+                  type="number"
+                  min={1} 
+                  value={expectedTime}
+                  onChange={(e) => setExpectedTime(e.target.value)}
+                  placeholder={t.expectedTimePlaceholder}
+                  className="w-full p-4 bg-brand-bg border-none rounded-2xl focus:ring-4 focus:ring-brand-primary/20 outline-none transition-all text-lg font-medium placeholder-brand-muted/50 text-brand-text shadow-inner"
+                  disabled={loading}
+                />
+              </div>
+            </>
           )}
 
           <div className="space-y-4">

@@ -162,7 +162,8 @@ export const fetchRecipes = async (
   sideDishCount: number,
   language: 'en' | 'zh-TW',
   config: AIConfig,
-  fridgeIngredients?: string
+  fridgeIngredients?: string,
+  expectedTime?: string
 ): Promise<Recipe[]> => {
   
   const langPrompt = language === 'zh-TW' ? "Output all text (except URLs) in Traditional Chinese (zh-TW)." : "Output all text in English.";
@@ -183,6 +184,10 @@ export const fetchRecipes = async (
   const fridgePrompt = fridgeIngredients?.trim() 
     ? `\nCRITICAL REQUIREMENT: The user wants to CLEAR THEIR FRIDGE. You MUST utilize these ingredients from the user's fridge to create the recipe(s): ${fridgeIngredients.trim()}. ` + (dishes.length === 0 ? "Invent or suggest creative and delicious dishes utilizing these ingredients." : "Adapt the requested dishes to use these ingredients as much as possible.")
     : "";
+    
+  const expectedTimePrompt = expectedTime?.trim()
+    ? `\nCRITICAL REQUIREMENT: The expected total cooking time is around ${expectedTime.trim()} minutes. Please plan simple dishes and optimize the recipes if the time is short.`
+    : "";
   
   const remarksPrompt = remarks.trim() ? `Additional Chef Requirements/Remarks: ${remarks.trim()}` : "";
   
@@ -190,6 +195,7 @@ export const fetchRecipes = async (
     You are a professional chef. 
     ${dishesPrompt}
     ${fridgePrompt}
+    ${expectedTimePrompt}
     2. Create detailed recipes based on your research or creativity.
     3. Scale ingredients for ${headcount} people.
     Constraint: ${dietary || "None"}.
