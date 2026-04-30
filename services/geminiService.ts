@@ -40,6 +40,7 @@ export const invokeAI = async (
        const errorData = await res.json().catch(() => ({}));
        console.error("OpenRouter Error:", errorData);
        if (res.status === 429) throw new Error('RATE_LIMIT');
+       if (res.status === 401) throw new Error('UNAUTHORIZED');
        throw new Error(`OpenRouter API error: ${res.status}`);
     }
     
@@ -160,7 +161,8 @@ export const fetchRecipes = async (
   dietary: string,
   sideDishCount: number,
   language: 'en' | 'zh-TW',
-  config: AIConfig
+  config: AIConfig,
+  fridgeIngredients?: string
 ): Promise<Recipe[]> => {
   
   const langPrompt = language === 'zh-TW' ? "Output all text (except URLs) in Traditional Chinese (zh-TW)." : "Output all text in English.";
@@ -169,26 +171,34 @@ export const fetchRecipes = async (
     ? `Also, suggest and include exactly ${sideDishCount} appropriate side dish(es) that complement the meal. Name them creatively.` 
     : "";
     
-  const dishesPrompt = dishes.map(d => `- ${d.name}` + 
-    (d.requirements ? ` (Requirements: ${d.requirements})` : '') + 
-    (d.youtubeUrl ? ` (Extract recipe ingredients and steps exactly from this YouTube video: ${d.youtubeUrl})` : '')
-  ).join("\n    ");
+  let dishesPrompt = "";
+  if (dishes.length > 0) {
+    dishesPrompt = "1. Search for authentic and high-rated recipes for the following dishes: \n    " + 
+      dishes.map(d => `- ${d.name}` + 
+      (d.requirements ? ` (Requirements: ${d.requirements})` : '') + 
+      (d.youtubeUrl ? ` (Extract recipe ingredients and steps exactly from this YouTube video: ${d.youtubeUrl})` : '')
+    ).join("\n    ");
+  }
+
+  const fridgePrompt = fridgeIngredients?.trim() 
+    ? `\nCRITICAL REQUIREMENT: The user wants to CLEAR THEIR FRIDGE. You MUST utilize these ingredients from the user's fridge to create the recipe(s): ${fridgeIngredients.trim()}. ` + (dishes.length === 0 ? "Invent or suggest creative and delicious dishes utilizing these ingredients." : "Adapt the requested dishes to use these ingredients as much as possible.")
+    : "";
   
   const remarksPrompt = remarks.trim() ? `Additional Chef Requirements/Remarks: ${remarks.trim()}` : "";
   
   const prompt = `
     You are a professional chef. 
-    1. Search for authentic and high-rated recipes for the following dishes: 
     ${dishesPrompt}
-    2. Create detailed recipes based on your research.
+    ${fridgePrompt}
+    2. Create detailed recipes based on your research or creativity.
     3. Scale ingredients for ${headcount} people.
     Constraint: ${dietary || "None"}.
     ${remarksPrompt}
     ${sideDishPrompt}
     ${langPrompt}
     Structure each recipe carefully. Distinguish between 'active' steps (chopping, stirring) and 'passive' steps (roasting, boiling, marinating).
-    IMPORTANT: For each recipe, you MUST include the 'sourceUrl' from the search result.
-    CRITICAL: You MUST extract the main image URL (such as the 'og:image' meta tag or the main article image) directly from the specific source URL found. Populate 'imageUrl' with this specific URL. Do not use generic placeholders.
+    IMPORTANT: For each recipe, you MUST include the 'sourceUrl' from the search result. If it's a completely original recipe, make sourceUrl empty string.
+    CRITICAL: You MUST extract the main image URL (such as the 'og:image' meta tag or the main article image) directly from the specific source URL found. Populate 'imageUrl' with this specific URL. If it's an original recipe, leave it empty. Do not use generic placeholders.
   `;
 
   try {
@@ -199,7 +209,7 @@ export const fetchRecipes = async (
     if (e?.status === 'RESOURCE_EXHAUSTED' || e?.message?.includes('429') || e?.message?.includes('quota') || e?.message === 'RATE_LIMIT') {
       throw new Error('RATE_LIMIT');
     }
-    return [];
+    throw e;
   }
 };
 
@@ -234,7 +244,7 @@ export const regenerateRecipes = async (
     if (e?.status === 'RESOURCE_EXHAUSTED' || e?.message?.includes('429') || e?.message?.includes('quota') || e?.message === 'RATE_LIMIT') {
       throw new Error('RATE_LIMIT');
     }
-    return [];
+    throw e;
   }
 };
 

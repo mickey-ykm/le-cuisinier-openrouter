@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ChefHat, History, Plus, Globe, ArrowRight, Loader2, ArrowLeft, Trash2, UtensilsCrossed, Minus, ExternalLink, Clock, List, Zap, BrainCircuit, Settings, Heart, Utensils, Smile, ChevronDown, ChevronUp } from 'lucide-react';
+import { ChefHat, History, Plus, Globe, ArrowRight, Loader2, ArrowLeft, Trash2, UtensilsCrossed, Minus, ExternalLink, Clock, List, Zap, BrainCircuit, Settings, Heart, Utensils, Smile, ChevronDown, ChevronUp, Snowflake } from 'lucide-react';
 import { Language, MealPlan } from './types';
 import { translations } from './translations';
 import { fetchRecipes, generateOrchestration, regenerateRecipes } from './services/geminiService';
@@ -16,7 +16,7 @@ const SETTINGS_STORAGE_KEY = 'mise-en-place-settings';
 
 const App = () => {
   const [language, setLanguage] = useState<Language>('zh-TW');
-  const [view, setView] = useState<'dashboard' | 'creator' | 'assistant' | 'privacy' | 'terms'>('dashboard');
+  const [view, setView] = useState<'dashboard' | 'creatorOptions' | 'creator' | 'assistant' | 'privacy' | 'terms'>('dashboard');
   const [plans, setPlans] = useState<MealPlan[]>([]);
   const [currentPlan, setCurrentPlan] = useState<MealPlan | null>(null);
   
@@ -37,6 +37,8 @@ const App = () => {
   const [regenInstruction, setRegenInstruction] = useState('');
 
   // Form State
+  const [creatorMode, setCreatorMode] = useState<'normal' | 'clearFridge'>('normal');
+  const [fridgeIngredients, setFridgeIngredients] = useState('');
   const [planTitleInput, setPlanTitleInput] = useState('');
   const [dishesInput, setDishesInput] = useState([{ id: Date.now().toString(), name: '', requirements: '', youtubeUrl: '' }]);
   const [remarks, setRemarks] = useState('');
@@ -95,7 +97,9 @@ const App = () => {
 
   const handleGenerate = async () => {
     const validDishes = dishesInput.filter(d => d.name.trim() !== '');
-    if (validDishes.length === 0) return;
+    if (creatorMode === 'normal' && validDishes.length === 0) return;
+    if (creatorMode === 'clearFridge' && validDishes.length === 0 && fridgeIngredients.trim() === '') return;
+
     setLoading(true);
     
     const config = {
@@ -104,7 +108,10 @@ const App = () => {
       apiKey: aiProvider === 'gemini' ? geminiApiKey : openRouterApiKey,
     };
     
-    const dishNamesStr = validDishes.map(d => d.name).join(', ');
+    let dishNamesStr = validDishes.map(d => d.name).join(', ');
+    if (creatorMode === 'clearFridge' && validDishes.length === 0) {
+      dishNamesStr = language === 'zh-TW' ? "清雪櫃料理" : "Clear Fridge Recipes";
+    }
     
     try {
       // Step 1: Research
@@ -112,7 +119,7 @@ const App = () => {
         ? `🔍 正在搜尋關於 "${dishNamesStr}" 的食譜...` 
         : `🔍 Researching recipes for "${dishNamesStr}"...`);
         
-      const recipes = await fetchRecipes(validDishes, remarks, headcount, dietary, sideDishCount, language, config);
+      const recipes = await fetchRecipes(validDishes, remarks, headcount, dietary, sideDishCount, language, config, creatorMode === 'clearFridge' ? fridgeIngredients : undefined);
       
       if (recipes.length === 0) {
         throw new Error("No recipes found");
@@ -130,7 +137,11 @@ const App = () => {
         ? "✨ 正在完成最終計畫..." 
         : "✨ Finalizing plan...");
 
-      const title = planTitleInput.trim() || (dishNamesStr + (sideDishCount > 0 ? ` + ${sideDishCount} sides` : ''));
+      const generatedTitle = creatorMode === 'clearFridge' 
+        ? t.clearFridgeOn.replace('{date}', new Date().toLocaleDateString())
+        : (planTitleInput.trim() || (dishNamesStr + (sideDishCount > 0 ? ` + ${sideDishCount} sides` : '')));
+      
+      const title = generatedTitle;
 
       const newPlan: MealPlan = {
         id: Date.now().toString(),
@@ -152,12 +163,15 @@ const App = () => {
       setPlanTitleInput(''); 
       setDishesInput([{ id: Date.now().toString(), name: '', requirements: '', youtubeUrl: '' }]);
       setRemarks('');
+      setFridgeIngredients('');
     } catch (err: any) {
       console.error(err);
       if (err?.message === 'RATE_LIMIT') {
-         alert(language === 'zh-TW' ? "AI API 使用量已達上限。請稍後再試，或在左上角設定中配置您自己的 API Key。" : "AI API rate limit exceeded. Please try again later, or configure your own API key in the top-left settings.");
+         alert(language === 'zh-TW' ? "AI API 使用量已達上限。請稍後再試，或在右上角設定中配置您自己的 API Key。" : "AI API rate limit exceeded. Please try again later, or configure your own API key in the top-right settings.");
+      } else if (err?.message === 'UNAUTHORIZED' || err?.message?.includes('401')) {
+         alert(language === 'zh-TW' ? "API 連線失敗 (未授權)。請在右上角設定中檢查您的 API Key 是否正確設定。" : "API connection failed (Unauthorized). Please check your API key in the top-right settings.");
       } else {
-         alert("Failed to generate plan. Please try again.");
+         alert((language === 'zh-TW' ? "生成計畫失敗: " : "Failed to generate plan: ") + (err?.message || "Please try again."));
       }
     } finally {
       setLoading(false);
@@ -286,13 +300,15 @@ const App = () => {
              <p className="text-brand-text/70 text-lg mb-8 max-w-md font-medium leading-relaxed">
                {t.subtitle}
              </p>
-             <button 
-               onClick={() => setView('creator')}
-               className="bg-brand-primary hover:bg-brand-primaryDark text-white px-8 py-4 rounded-full font-bold flex items-center gap-3 transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-1"
-             >
-               <Plus size={22} strokeWidth={3} />
-               {t.startNew}
-             </button>
+             <div className="flex flex-col sm:flex-row items-center gap-4">
+               <button 
+                 onClick={() => setView('creatorOptions')}
+                 className="w-full sm:w-auto bg-brand-primary hover:bg-brand-primaryDark text-white px-8 py-4 rounded-full font-bold flex items-center justify-center gap-3 transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-1"
+               >
+                 <Plus size={22} strokeWidth={3} />
+                 {t.startNew}
+               </button>
+             </div>
           </div>
           <div className="hidden md:block md:w-1/3 flex justify-center">
              <div className="relative">
@@ -374,10 +390,55 @@ const App = () => {
     </div>
   );
 
+  const renderCreatorOptions = () => (
+    <div className="max-w-3xl mx-auto px-4 py-12">
+      <button 
+        onClick={() => setView('dashboard')}
+        className="mb-8 text-brand-text/60 hover:text-brand-primary flex items-center gap-2 transition-colors font-bold"
+      >
+        <ArrowLeft size={20} /> {t.back}
+      </button>
+
+      <div className="bg-brand-surface rounded-3xl shadow-soft p-10 relative overflow-hidden text-center">
+        <h2 className="text-3xl font-black text-brand-text mb-10">
+          {t.creatorOptionTitle}
+        </h2>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <button 
+            onClick={() => { setCreatorMode('normal'); setView('creator'); }}
+            className="flex flex-col items-center p-8 bg-brand-bg rounded-3xl border border-transparent hover:border-brand-primary/30 hover:shadow-hover transition-all group"
+          >
+            <div className="w-16 h-16 bg-brand-primary/10 rounded-full flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+              <span className="text-3xl">🍳</span>
+            </div>
+            <h3 className="text-xl font-bold text-brand-text mb-3">{t.optionSpecificDishes}</h3>
+            <p className="text-brand-text/70 text-sm font-medium leading-relaxed">
+              {t.optionSpecificDishesDesc}
+            </p>
+          </button>
+
+          <button 
+            onClick={() => { setCreatorMode('clearFridge'); setView('creator'); }}
+            className="flex flex-col items-center p-8 bg-blue-50/50 rounded-3xl border border-transparent hover:border-blue-400/30 hover:shadow-hover transition-all group"
+          >
+            <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+              <span className="text-3xl">❄️</span>
+            </div>
+            <h3 className="text-xl font-bold text-brand-text mb-3">{t.optionClearFridge}</h3>
+            <p className="text-brand-text/70 text-sm font-medium leading-relaxed">
+              {t.optionClearFridgeDesc}
+            </p>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
   const renderCreator = () => (
     <div className="max-w-2xl mx-auto px-4 py-12">
       <button 
-        onClick={() => setView('dashboard')}
+        onClick={() => setView('creatorOptions')}
         className="mb-8 text-brand-text/60 hover:text-brand-primary flex items-center gap-2 transition-colors font-bold"
       >
         <ArrowLeft size={20} /> {t.back}
@@ -396,8 +457,8 @@ const App = () => {
         )}
 
         <h2 className="text-xl md:text-3xl font-black text-brand-text mb-8 flex items-center gap-3">
-          <span className="bg-brand-secondary p-2 rounded-xl text-brand-text">📝</span>
-          <span>{t.step1}</span>
+          <span className="bg-brand-secondary p-2 rounded-xl text-brand-text">{creatorMode === 'clearFridge' ? '❄️' : '📝'}</span>
+          <span>{creatorMode === 'clearFridge' ? t.clearFridge : t.step1}</span>
         </h2>
         
         <div className="space-y-8">
@@ -416,8 +477,26 @@ const App = () => {
             />
           </div>
 
+          {/* Clear Fridge Ingredients Input */}
+          {creatorMode === 'clearFridge' && (
+            <div>
+              <label className="block text-sm font-bold text-brand-text/80 mb-3 uppercase tracking-wide">
+                 {t.fridgeIngredients}
+              </label>
+              <textarea 
+                value={fridgeIngredients}
+                onChange={(e) => setFridgeIngredients(e.target.value)}
+                placeholder={t.fridgeIngredientsPlaceholder}
+                className="w-full p-4 bg-brand-bg border-none rounded-2xl focus:ring-4 focus:ring-brand-primary/20 outline-none transition-all text-lg font-medium placeholder-brand-muted/50 text-brand-text shadow-inner min-h-[100px] resize-y"
+                disabled={loading}
+              />
+            </div>
+          )}
+
           <div className="space-y-4">
-            <label className="block text-sm font-bold text-brand-text/80 mb-3 uppercase tracking-wide">{t.dishes}</label>
+            <label className="block text-sm font-bold text-brand-text/80 mb-3 uppercase tracking-wide">
+              {t.dishes} {creatorMode === 'clearFridge' && <span className="text-brand-muted normal-case font-normal ml-1">({t.optional})</span>}
+            </label>
             {dishesInput.map((dish, index) => (
               <div key={dish.id} className="flex flex-col gap-3 bg-brand-bg p-4 rounded-2xl shadow-inner relative group border border-transparent hover:border-brand-primary/20 transition-colors">
                 <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
@@ -545,9 +624,9 @@ const App = () => {
 
           <button 
             onClick={handleGenerate}
-            disabled={dishesInput.filter(d => d.name.trim() !== '').length === 0 || loading}
+            disabled={loading || (creatorMode === 'normal' ? dishesInput.filter(d => d.name.trim() !== '').length === 0 : fridgeIngredients.trim() === '' && dishesInput.filter(d => d.name.trim() !== '').length === 0)}
             className={`w-full py-5 rounded-full font-black text-lg flex items-center justify-center gap-3 transition-all mt-6
-              ${dishesInput.filter(d => d.name.trim() !== '').length === 0 || loading 
+              ${(loading || (creatorMode === 'normal' ? dishesInput.filter(d => d.name.trim() !== '').length === 0 : fridgeIngredients.trim() === '' && dishesInput.filter(d => d.name.trim() !== '').length === 0)) 
                 ? 'bg-brand-bg text-brand-muted cursor-not-allowed' 
                 : 'bg-brand-primary hover:bg-brand-primaryDark text-white shadow-lg hover:shadow-xl transform hover:-translate-y-1'}`}
           >
@@ -893,6 +972,7 @@ const App = () => {
       {/* Main Content */}
       <main className="flex-grow">
         {view === 'dashboard' && renderDashboard()}
+        {view === 'creatorOptions' && renderCreatorOptions()}
         {view === 'creator' && renderCreator()}
         {view === 'assistant' && renderAssistant()}
         {view === 'privacy' && <PrivacyPolicy onBack={() => setView('dashboard')} language={language} />}
